@@ -1,0 +1,32 @@
+{:paths ["src"]
+
+  ;; glimmer-bui is the BUI (Blender UI kit) backend for glimmer: glimmer owns
+  ;; the reactive core (ratom, component model, reconciler) and knows nothing
+  ;; about any toolkit; this project maps hiccup onto BUI's retained node tree
+  ;; (BKNode), props onto BK_set_num/BK_set_str, :on-* events onto the BKHost
+  ;; emit callback, and drives BK_window_run as the app loop.
+  :deps {jolt-lang/glimmer {:git/url "https://github.com/jolt-lang/glimmer"
+                            :git/tag "v0.1.4"
+                            :git/sha "09b8ab08705fa1e6f20145c2e99eaaba9ea812cc"}}
+
+  ;; BUI kit (https://github.com/ppmpreetham/BUI), bound via jolt.ffi. The kit
+  ;; builds as static archives; `jolt tasks` (see below) links them into one
+  ;; dylib. Entries: the glimmer-bui repo copy first (a build task drops it
+  ;; there), then an in-tree BUI checkout at ~/src/bui-src.
+  ;;
+  ;; Note: BUI is GPL-2.0-or-later, so programs linking it are GPL too.
+  :jolt/native [{:name "bui"
+                 :darwin ["libbui.dylib"
+                          "/Users/yogthos/src/jlt-commons/glimmer-bui/lib/libbui.dylib"
+                          "/Users/yogthos/src/bui-src/lib/libbui.dylib"]
+                 :linux  ["libbui.so"]}]
+
+  ;; Each runnable has its own alias with :main-opts (jolt's -M:alias form needs
+  ;; main-opts). Tasks are thin wrappers so you can run `jolt test`, etc.
+  :aliases {:test    {:extra-paths ["test"]     :main-opts ["-m" "glimmer-bui.test-runner"]}
+            :counter {:extra-paths ["examples"] :main-opts ["-m" "glimmer-bui.counter"]}
+            :smoke   {:extra-paths ["examples"] :main-opts ["-m" "glimmer-bui.smoke"]}}
+
+  :tasks {test    "jolt -M:test"
+          counter "jolt -M:counter"
+          smoke   "jolt -M:smoke"}}

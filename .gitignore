@@ -1,0 +1,16 @@
+# Clojure / jolt caches
+.cpcache
+.jolt
+.clj-kondo
+.lsp
+
+# dirge session state
+.dirge
+
+# nREPL
+.nrepl-port
+
+# locally linked BUI kit dylib (see deps.edn :jolt/native)
+lib/
+
+.DS_Store
