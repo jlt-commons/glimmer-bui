@@ -29,3 +29,15 @@
       (is (= 2.5 @result))
       (bk/context-free ctx)
       (bk/node-free root)))) ; frees n recursively
+
+(deftest emit-wheel
+  (testing "on-wheel receives the delta"
+    (let [result (atom nil)
+          n (w/create! :canvas {:on-wheel (fn [d] (reset! result d))})
+          root (bk/node-new "column")
+          _ (bk/node-add root n -1)
+          ctx (bk/context-new root)]
+      (c/test-emit ctx n 15 nil -3.0 0.0) ; BK_EV_WHEEL, a = delta
+      (is (= -3.0 @result))
+      (bk/context-free ctx)
+      (bk/node-free root))))

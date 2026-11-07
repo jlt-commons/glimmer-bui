@@ -48,6 +48,19 @@
 (ffi/defcfn node-set-image-source "BK_node_set_image_source" [:pointer :string :int] :void)
 (ffi/defcfn node-set-image-frame  "BK_node_set_image_frame"  [:pointer :int] :void)
 
+;; --- canvas (Tk Canvas / QPainter display list) -----------------------------------
+(def ITEM-IMAGE 6)    ; BK_ITEM_IMAGE
+(def FIT-FILL 0)      ; BK_FIT_FILL
+(def FIT-CONTAIN 1)   ; BK_FIT_CONTAIN
+(def FIT-COVER 2)     ; BK_FIT_COVER
+(def FIT-NONE 3)      ; BK_FIT_NONE
+(def FIT-SCALE-DOWN 4); BK_FIT_SCALE_DOWN
+
+(ffi/defcfn canvas-set-item "BK_canvas_set_item" [:pointer :pointer] :void)
+(ffi/defcfn canvas-add-item "BK_canvas_add_item" [:pointer :pointer] :void)
+(ffi/defcfn canvas-delete    "BK_canvas_delete"    [:pointer :int] :void)
+(ffi/defcfn canvas-count     "BK_canvas_count"     [:pointer] :int)
+
 ;; --- geometry -------------------------------------------------------------------
 (def GEOM-NONE 0)
 (def GEOM-PACK 1)

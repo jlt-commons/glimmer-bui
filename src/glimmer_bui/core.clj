@@ -43,13 +43,15 @@
   "The BKHost.emit body: look up the node's handlers (registered at create! in
   glimmer-bui.widget's handler table, keyed by node address) and invoke the
   matching kind. Kind 1 (CHANGE) passes the node's current numeric value; kind
-  16 (SUBMIT) the text value; every other kind passes nothing."
-  [node kind]
+  16 (SUBMIT) the text value; kind 15 (WHEEL) the delta `a`; every other kind
+  passes nothing."
+  [node kind a b]
   (when-let [handlers (w/handlers-for node)]
     (when-let [f (get handlers kind)]
       (case kind
         1  (f (bk/get-num node "value"))
         16 (f (bk/get-str node "value"))
+        15 (f a)
         (f)))))
 
 (def ^:private callables (atom #{}))
@@ -65,7 +67,7 @@
     (let [cb (retain-callable!
                (ffi/foreign-callable
                  (fn [_data node kind _ref _a _b]
-                   (emit-dispatch node kind))
+                   (emit-dispatch node kind _a _b))
                  [:pointer :pointer :int :pointer :double :double]
                  :void :collect-safe))]
       (let [p (ffi/alloc (ffi/sizeof host-layout))]
@@ -205,4 +207,4 @@
 (defn test-emit
   "Invoke the emit dispatcher directly (headless tests: no window loop)."
   [ctx node kind ref a b]
-  (emit-dispatch node kind))
+  (emit-dispatch node kind a b))

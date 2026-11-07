@@ -80,6 +80,8 @@
     :low :high :optimum
     ;; list/dropdown/enum selection
     :selected :multiple :hidden :sort :invert :mode :filter
+    ;; raw event flags (canvas/scroll nodes: receive wheel/motion to the host)
+    :events :viewevents
     ;; tree/gridview
     :row-height})
 
@@ -114,17 +116,52 @@
         (bk/node-set-image node p width height)
         (ffi/free p)))))
 
+(def ^:private canvas-item-layout
+  "Layout of the C BKCanvasItem struct (BUI_kit.h). Field order must match."
+  (ffi/layout [:struct [[:id :int32] [:type :int32] [:coords :pointer] [:ncoords :int32]
+                        [:fill [:array :float 4]] [:outline [:array :float 4]]
+                        [:width :float] [:radius :float] [:size :float]
+                        [:start :float] [:extent :float]
+                        [:text :pointer] [:anchor :int32]
+                        [:rgba :pointer] [:iw :int32] [:ih :int32]
+                        [:hidden :int32] [:text-flags :int32] [:clip-on :int32]
+                        [:clip [:array :float 4]]
+                        [:family :pointer] [:imbuf :pointer] [:src :pointer]
+                        [:fit :int32] [:frame :int32] [:video :pointer]]]))
+
+(defn- set-canvas-image!
+  "Set a canvas node's image item from {:id :width :height :rgba :coords [x0 y0 x1 y1]
+   :fit}. BK_canvas_set_item copies coords + rgba, so the arena is freed after."
+  [node {:keys [id width height rgba coords fit]}]
+  (with-open [a (ffi/confined-arena)]
+    (let [[x0 y0 x1 y1] coords
+          cptr (ffi/alloc a :float 4)
+          _ (ffi/write-array cptr :float (float-array [x0 y0 x1 y1]))
+          rptr (ffi/alloc a (* width height 4))
+          _ (ffi/write-array rptr rgba)
+          item (ffi/alloc a canvas-item-layout)]
+      (ffi/write-field item canvas-item-layout [:id] (int (or id 0)))
+      (ffi/write-field item canvas-item-layout [:type] bk/ITEM-IMAGE)
+      (ffi/write-field item canvas-item-layout [:coords] cptr)
+      (ffi/write-field item canvas-item-layout [:ncoords] 4)
+      (ffi/write-field item canvas-item-layout [:rgba] rptr)
+      (ffi/write-field item canvas-item-layout [:iw] (int width))
+      (ffi/write-field item canvas-item-layout [:ih] (int height))
+      (ffi/write-field item canvas-item-layout [:fit] (int (or fit bk/FIT-CONTAIN)))
+      (bk/canvas-set-item node item))))
+
 (defn- set-prop!
   "Set one prop on `node`. Numbers go to BK_set_num, strings to BK_set_str,
   geometry to BK_geom_set. A keyword value for a string prop is stringified.
   Special props: :items (vector of strings, BK_set_strs), :src (image path),
-  :image (raw RGBA map)."
+  :image (raw RGBA map), :canvas-image (canvas image item)."
   [node k v]
   (let [k' (st/replace (name k) "-" "_")]
     (cond
       (= k :items) (set-items! node v)
       (= k :src)   (bk/node-set-image-source node (str v) 1)  ; BK_FIT_CONTAIN
       (= k :image) (set-image! node v)
+      (= k :canvas-image) (set-canvas-image! node v)
       (contains? geom-props k) (bk/geom-set node k' (double v))
       (contains? num-props k)  (bk/set-num node k' (double (cond (true? v) 1 (false? v) 0 :else v)))
       :else                    (bk/set-str node k' (if (keyword? v) (name v) (str v))))))
