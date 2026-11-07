@@ -114,7 +114,14 @@
     (if (= 1 (bk/window-supported))
       (do
         (bk/window-wake-init (retain-callable!
-                               (ffi/foreign-callable (fn [] (drain-work!)) [] :void)))
+                               ;; :collect-safe: BUI invokes this wake callback on
+                               ;; the window-loop thread while it is parked in the
+                               ;; :blocking BK_window_run. drain-work! runs the
+                               ;; queued re-renders, which allocate heavily and
+                               ;; trigger GC — without :collect-safe that collection
+                               ;; fails ("cannot collect when multiple threads are
+                               ;; active", the slider crash).
+                               (ffi/foreign-callable (fn [] (drain-work!)) [] :void :collect-safe)))
         (let [win (bk/window-new ctx title width height)]
           (reset! current-window win)
           (mount-root! root :column)

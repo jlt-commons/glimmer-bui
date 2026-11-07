@@ -19,7 +19,8 @@
   Layout: 'frame' children need a geometry manager (pack by default) or they
   are never shown (Tk semantics). column/row lay out children themselves."
   (:require [clojure.string :as st]
-            [glimmer-bui.ffi :as bk]))
+            [glimmer-bui.ffi :as bk]
+            [jolt.ffi :as ffi]))
 
 ;; --- tag -> node type ---------------------------------------------------------
 (def ^:private tags
@@ -90,12 +91,40 @@
     :x :y :relx :rely :width :height :relwidth :relheight
     :reqwidth :reqheight})
 
+(defn- set-items!
+  "Set a dropdown/enum/list's items from a vector of strings (BK_set_strs)."
+  [node items]
+  (when (seq items)
+    (with-open [a (ffi/confined-arena)]
+      (let [n (count items)
+            ptrs (mapv #(ffi/string->ptr a (str %)) items)
+            arr (ffi/alloc a (* 8 n))]
+        (dotimes [i n]
+          (ffi/write arr :pointer (nth ptrs i) (* 8 i)))
+        (bk/set-strs node "items" arr n)))))
+
+(defn- set-image!
+  "Set an image node's pixels from {:width w :height h :rgba byte-array} (RGBA,
+   w*h*4 bytes). BK_node_set_image copies the buffer, so we free ours after."
+  [node {:keys [width height rgba]}]
+  (let [n (* width height 4)]
+    (when (and width height rgba (= n (alength rgba)))
+      (let [p (ffi/alloc n)]
+        (ffi/write-array p rgba)
+        (bk/node-set-image node p width height)
+        (ffi/free p)))))
+
 (defn- set-prop!
   "Set one prop on `node`. Numbers go to BK_set_num, strings to BK_set_str,
-  geometry to BK_geom_set. A keyword value for a string prop is stringified."
+  geometry to BK_geom_set. A keyword value for a string prop is stringified.
+  Special props: :items (vector of strings, BK_set_strs), :src (image path),
+  :image (raw RGBA map)."
   [node k v]
   (let [k' (st/replace (name k) "-" "_")]
     (cond
+      (= k :items) (set-items! node v)
+      (= k :src)   (bk/node-set-image-source node (str v) 1)  ; BK_FIT_CONTAIN
+      (= k :image) (set-image! node v)
       (contains? geom-props k) (bk/geom-set node k' (double v))
       (contains? num-props k)  (bk/set-num node k' (double (cond (true? v) 1 (false? v) 0 :else v)))
       :else                    (bk/set-str node k' (if (keyword? v) (name v) (str v))))))

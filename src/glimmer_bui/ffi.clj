@@ -43,6 +43,11 @@
 (ffi/defcfn strs-count      "BK_strs_count"      [:pointer :string] :int)
 (ffi/defcfn strs-get        "BK_strs_get"        [:pointer :string :int] :string)
 
+;; --- images ---------------------------------------------------------------------
+(ffi/defcfn node-set-image        "BK_node_set_image"        [:pointer :pointer :int :int] :void)
+(ffi/defcfn node-set-image-source "BK_node_set_image_source" [:pointer :string :int] :void)
+(ffi/defcfn node-set-image-frame  "BK_node_set_image_frame"  [:pointer :int] :void)
+
 ;; --- geometry -------------------------------------------------------------------
 (def GEOM-NONE 0)
 (def GEOM-PACK 1)
