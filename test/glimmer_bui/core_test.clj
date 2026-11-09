@@ -45,6 +45,21 @@
       (bk/context-free ctx)
       (bk/node-free root))))
 
+(deftest emit-keys
+  (testing "on-key and on-keyrelease receive the keysym and the modifier bits"
+    (let [seen (atom [])
+          n (w/create! :canvas {:events 1
+                                :on-key (fn [k mods] (swap! seen conj [:down k mods]))
+                                :on-keyrelease (fn [k mods] (swap! seen conj [:up k mods]))})
+          root (bk/node-new "column")
+          _ (bk/node-add root n -1)
+          ctx (bk/context-new root)]
+      (c/test-emit ctx n 14 " \tspace" 2.0 0.0) ; BK_EV_KEY: ref "text\tkeysym", a = mods
+      (c/test-emit ctx n 20 "\tspace" 0.0 0.0)  ; BK_EV_KEYRELEASE: ref "\tkeysym"
+      (is (= [[:down "space" 2] [:up "space" 0]] @seen))
+      (bk/context-free ctx)
+      (bk/node-free root))))
+
 (defn- emit-on [props kind a b]
   (let [result (atom nil)
         n (w/create! :canvas (assoc props :events 1))
