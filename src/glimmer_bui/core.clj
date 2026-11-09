@@ -39,20 +39,29 @@
                         [:schedule :pointer]
                         [:emit :pointer]]]))
 
+(def ^:private positional-kinds
+  "BK_EV kinds whose handler receives (a, b): raw pointer events (position
+  relative to the node), CONFIGURE (new width, height), TOGGLE (column, value)
+  and SCROLL (request kind, amount)."
+  #{6 8 9 10 11 18 19})
+
 (defn emit-dispatch
   "The BKHost.emit body: look up the node's handlers (registered at create! in
   glimmer-bui.widget's handler table, keyed by node address) and invoke the
-  matching kind. Kind 1 (CHANGE) passes the node's current numeric value; kind
-  16 (SUBMIT) the text value; kind 15 (WHEEL) the delta `a`; every other kind
-  passes nothing."
+  matching kind. CHANGE (1) passes the node's current numeric value, SUBMIT (16)
+  its text, WHEEL (15) the delta `a`, ACTIVATE/RENAME (5/4) the index `a`,
+  positional kinds (press/release/double/motion, configure, toggle, scroll)
+  `a` and `b`; every other kind passes nothing."
   [node kind a b]
   (when-let [handlers (w/handlers-for node)]
     (when-let [f (get handlers kind)]
-      (case kind
-        1  (f (bk/get-num node "value"))
-        16 (f (bk/get-str node "value"))
-        15 (f a)
-        (f)))))
+      (cond
+        (= kind 1)  (f (bk/get-num node "value"))
+        (= kind 16) (f (bk/get-str node "value"))
+        (= kind 15) (f a)
+        (or (= kind 4) (= kind 5)) (f a)
+        (contains? positional-kinds kind) (f a b)
+        :else (f)))))
 
 (def ^:private callables (atom #{}))
 
@@ -80,11 +89,18 @@
 
 (defn- drain-work!
   "Run everything queued by post-to-loop. Called on the loop's thread by the
-  wake callback BK_window_wake_init registered."
+  wake callback BK_window_wake_init registered. Each thunk runs on its own: one
+  that throws is reported and the rest still run (a dropped re-render would
+  leave its component's pending flag set, so it would never render again)."
   []
   (let [queue (atom nil)]
     (swap! work-queue (fn [q] (reset! queue q) []))
-    (doseq [thunk @queue] (thunk))))
+    (doseq [thunk @queue]
+      (try (thunk)
+           (catch Throwable e
+             (binding [*out* *err*]
+               (println "glimmer-bui: error in scheduled work:" (ex-message e))
+               (when-let [d (ex-data e)] (prn d))))))))
 
 (defn- post-to-loop
   "Backend :schedule. Queue work and wake the window loop."

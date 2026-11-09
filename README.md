@@ -90,11 +90,29 @@ or `:side`/`:fill`/`:expand`/`:padx0`… through `BK_geom_set`), `:panel`
 `:enabled` `:integer` `:bold` `:html` …), and container keys (`:padding`).
 Dashes become underscores. Unknown keys are silently ignored by the kit.
 
+Re-renders only send props whose value changed since the last render; the kit
+relayouts on every numeric set, and re-sending `:value` would snap a slider the
+user is dragging back to the render's value.
+
+Layout: in a `:hbox`, `:weight` is a child's share of the spare width (0 keeps
+its natural width); `:reqwidth`/`:reqheight` fix any node's natural size; in a
+`:vbox`, `:stretch true` gives a child the spare height (the kit's `fill`, which
+as a hiccup key belongs to the frame geometry manager); `:height-units` is the
+kit's `height` (in widget units). Colors (`:bg`, `:color`, `:text-color`) take
+`[r g b a]`. A `:canvas` takes `:canvas-items`, a vector of item maps keyed by
+`:id` (`:type` `:rect` `:oval` `:line` `:polygon` `:text` `:image`, `:coords`,
+`:fill`, `:outline`, `:width`, and for images `:rgba` (a byte-array or a native
+pointer) with `:iw`/`:ih`/`:fit`); only changed items are re-sent, and ids that
+disappear are deleted. `glimmer-bui.ffi/file-dialog` runs Blender's file browser.
+
 **Events:** `:on-click`, `:on-change` (receives the node's numeric value),
-`:on-submit` (text fields, receives the text), `:on-toggle`, `:on-activate`,
-`:on-press`/`:on-release`/`:on-motion`/`:on-key`… — the `BK_EV_*` kinds. The
-kit funnels everything through one `BKHost.emit` callback; handlers are
-registered in a table keyed by node address and dispatched by kind.
+`:on-submit` (text fields, receives the text), `:on-wheel` (the delta),
+`:on-activate`/`:on-rename` (the row index), and the raw pointer events
+`:on-press`/`:on-release`/`:on-double`/`:on-motion`, which receive `x y`
+relative to the node (set `:events 1` on the node to get them);
+`:on-configure` receives the node's new `width height`. The kit funnels
+everything through one `BKHost.emit` callback; handlers are registered in a
+table keyed by node address and dispatched by kind.
 
 Handlers close over reactive cells (not values), so the first render's closure
 stays correct for the widget's life — exactly like glimmer-gtk.

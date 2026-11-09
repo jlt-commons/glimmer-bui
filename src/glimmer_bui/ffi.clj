@@ -141,3 +141,27 @@
 
 ;; --- helpers ---------------------------------------------------------------------
 (defn null? [p] (ffi/null? p))
+
+;; --- file dialog (Blender's File Browser in its own window) -------------------------
+(ffi/defcfn file-dialog-native "BK_file_dialog"
+  [:string :int :string :string :pointer :int :int :pointer] :int)
+(ffi/defcfn file-dialog-free "BK_file_dialog_free" [:pointer] :void)
+
+(defn file-dialog
+  "Run Blender's file browser in its own window until it is answered. Returns a
+  vector of chosen paths ([] when cancelled, nil without a window host).
+  opts: :title, :mode (:open :save :directory), :dir, :file, :multiple,
+  :filters — [[\"Images\" \"*.png *.jpg\"] ...]."
+  [{:keys [title mode dir file multiple filters]}]
+  (with-open [a (ffi/confined-arena)]
+    (let [fs (mapv (fn [[label pats]] (ffi/string->ptr a (str label "\t" pats))) filters)
+          farr (ffi/alloc a (* 8 (max 1 (count fs))))
+          out (ffi/alloc a :pointer)]
+      (dotimes [i (count fs)] (ffi/write farr :pointer (nth fs i) (* 8 i)))
+      (let [n (file-dialog-native (or title "Open") (case mode :save 1 :directory 2 0)
+                                  dir file farr (count fs) (if multiple 1 0) out)]
+        (when (>= n 0)
+          (let [arr (ffi/read out :pointer 0)
+                paths (mapv #(ffi/ptr->string (ffi/read arr :pointer (* 8 %))) (range n))]
+            (when-not (ffi/null? arr) (file-dialog-free arr))
+            paths))))))
