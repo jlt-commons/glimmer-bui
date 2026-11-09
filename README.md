@@ -106,7 +106,7 @@ pointer) with `:iw`/`:ih`/`:fit`); only changed items are re-sent, and ids that
 disappear are deleted. `glimmer-bui.ffi/file-dialog` runs Blender's file browser.
 
 **Events:** `:on-click`, `:on-change` (receives the node's numeric value),
-`:on-submit` (text fields, receives the text), `:on-wheel` (the delta),
+`:on-submit` (text fields, receives the text), `:on-wheel` (the delta and the modifier bits: Shift 1, Ctrl 2, Alt 4; a horizontal scroll arrives as Shift + wheel),
 `:on-activate`/`:on-rename` (the row index), and the raw pointer events
 `:on-press`/`:on-release`/`:on-double`/`:on-motion`, which receive `x y`
 relative to the node (set `:events 1` on the node to get them);

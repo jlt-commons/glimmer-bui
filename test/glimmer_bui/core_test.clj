@@ -31,14 +31,17 @@
       (bk/node-free root)))) ; frees n recursively
 
 (deftest emit-wheel
-  (testing "on-wheel receives the delta"
+  (testing "on-wheel receives the delta and the modifier keys"
     (let [result (atom nil)
-          n (w/create! :canvas {:on-wheel (fn [d] (reset! result d))})
+          n (w/create! :canvas {:on-wheel (fn [d mods] (reset! result [d mods]))})
           root (bk/node-new "column")
           _ (bk/node-add root n -1)
           ctx (bk/context-new root)]
       (c/test-emit ctx n 15 nil -3.0 0.0) ; BK_EV_WHEEL, a = delta
-      (is (= -3.0 @result))
+      (is (= [-3.0 0] @result))
+      ;; the kit reports a horizontal scroll as Shift + wheel ("mods button")
+      (c/test-emit ctx n 15 "1 0" 1.0 0.0)
+      (is (= [1.0 1] @result))
       (bk/context-free ctx)
       (bk/node-free root))))
 
