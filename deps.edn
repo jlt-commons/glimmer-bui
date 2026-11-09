@@ -10,16 +10,16 @@
                             :git/sha "09b8ab08705fa1e6f20145c2e99eaaba9ea812cc"}}
 
   ;; BUI kit (https://github.com/ppmpreetham/BUI), bound via jolt.ffi. The kit
-  ;; builds as static archives; `jolt tasks` (see below) links them into one
-  ;; dylib. Entries: the glimmer-bui repo copy first (a build task drops it
-  ;; there), then an in-tree BUI checkout at ~/src/bui-src.
+  ;; builds as static archives; the `native` task links them into one shared
+  ;; library at lib/ in this project (relative candidates resolve against this
+  ;; deps.edn, so that works for consumers too). It reads the archives from the
+  ;; BUI checkout at $BUI_HOME (default ~/src/bui-src). A bare libbui.dylib /
+  ;; libbui.so on the loader's search path is the fallback.
   ;;
   ;; Note: BUI is GPL-2.0-or-later, so programs linking it are GPL too.
   :jolt/native [{:name "bui"
-                 :darwin ["libbui.dylib"
-                          "/Users/yogthos/src/jlt-commons/glimmer-bui/lib/libbui.dylib"
-                          "/Users/yogthos/src/bui-src/lib/libbui.dylib"]
-                 :linux  ["libbui.so"]}]
+                 :darwin ["lib/libbui.dylib" "libbui.dylib"]
+                 :linux  ["lib/libbui.so" "libbui.so"]}]
 
   ;; Each runnable has its own alias with :main-opts (jolt's -M:alias form needs
   ;; main-opts). Tasks are thin wrappers so you can run `jolt test`, etc.
@@ -27,6 +27,38 @@
             :counter {:extra-paths ["examples"] :main-opts ["-m" "glimmer-bui.counter"]}
             :smoke   {:extra-paths ["examples"] :main-opts ["-m" "glimmer-bui.smoke"]}}
 
-  :tasks {test    "jolt -M:test"
-          counter "jolt -M:counter"
-          smoke   "jolt -M:smoke"}}
+  :tasks {:requires ([babashka.fs :as fs])
+          :init (def mac? (boolean (re-find #"^Mac" (System/getProperty "os.name"))))
+
+          native {:doc "link BUI's static archives from $BUI_HOME into lib/libbui"
+                  :task (let [bui  (or (System/getenv "BUI_HOME")
+                                       (str (System/getProperty "user.home") "/src/bui-src"))
+                              lib  (str "lib/libbui." (if mac? "dylib" "so"))
+                              arcs (mapv #(str bui "/build/" % "/libbui_" % ".a")
+                                         ["kit" "gpu" "core"])]
+                          (cond
+                            (and (fs/exists? lib) (empty? (fs/modified-since lib arcs)))
+                            (println "up to date:" lib)
+
+                            (not-every? fs/exists? arcs)
+                            (println (str "BUI archives not found under " bui "/build;"
+                                          " build BUI there (see README) or set BUI_HOME."
+                                          " Falling back to libbui on the loader path."))
+
+                            :else
+                            (do (fs/create-dirs "lib")
+                                (apply shell
+                                       (concat
+                                        ["c++" "-shared" "-o" lib]
+                                        (if mac?
+                                          (concat (mapcat #(vector "-force_load" %) arcs)
+                                                  ["-framework" "Cocoa" "-framework" "IOKit"
+                                                   "-framework" "CoreVideo" "-framework" "AVFoundation"
+                                                   "-framework" "CoreMedia"])
+                                          (concat ["-Wl,--whole-archive"] arcs ["-Wl,--no-whole-archive"]))
+                                        ["-lm" "-lpthread"]))
+                                (println "built:" lib))))}
+
+          test    {:depends [native] :task (shell "jolt -M:test")}
+          counter {:depends [native] :task (shell "jolt -M:counter")}
+          smoke   {:depends [native] :task (shell "jolt -M:smoke")}}}
