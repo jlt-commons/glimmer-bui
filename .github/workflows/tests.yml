@@ -1,0 +1,57 @@
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+env:
+  # the BUI commit glimmer-bui is tested against
+  BUI_REF: 79be8e30bbbc28c8224274d342081e8f522d34cf
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      BUI_HOME: ${{ github.workspace }}/bui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: ppmpreetham/BUI
+          ref: ${{ env.BUI_REF }}
+          path: bui
+      - name: Install build deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y liblz4-1 zlib1g libtinfo6 libx11-dev
+      - uses: actions/cache@v6
+        id: bui-cache
+        with:
+          path: bui/build
+          key: ${{ runner.os }}-bui-${{ env.BUI_REF }}
+      # Static archives only; PIC because `jolt native` links them into a
+      # shared library.
+      - name: Build BUI
+        if: steps.bui-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S bui -B bui/build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUI_BUILD_TESTS=OFF -DBUI_BUILD_PYTHON_BINDINGS=OFF
+          cmake --build bui/build --parallel 4
+      - id: jolt
+        uses: jlt-commons/setup-jolt@v1.0.2
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.jolt/gitlibs
+            ~/.jolt/mvnlibs
+            ~/.m2/repository
+          key: ${{ runner.os }}-jolt-${{ steps.jolt.outputs.version }}-${{ hashFiles('deps.edn') }}
+      # The suite builds kit nodes without opening a window, so it needs no
+      # display. `jolt smoke` drives the live window loop and is left out.
+      - name: Test
+        run: JOLT_PWD="$PWD" jolt test
