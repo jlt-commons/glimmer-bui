@@ -37,26 +37,25 @@ README. What follows is the BUI-specific part.
 
 ## Requirements
 
-The BUI kit is not yet published as a system library; this project builds it
-from source:
+The BUI kit is not yet published as a system library; build it from source
+anywhere and point `BUI_HOME` at the checkout (default `~/src/bui-src`):
 
 ```sh
-git clone --depth 1 https://github.com/ppmpreetham/BUI.git ~/src/bui-src
-cmake -S ~/src/bui-src -B ~/src/bui-src/build -DCMAKE_BUILD_TYPE=Release
-cmake --build ~/src/bui-src/build --parallel
-# link the static archives into one dylib the loader can dlopen:
-mkdir -p ~/src/bui-src/lib
-c++ -shared -o ~/src/bui-src/lib/libbui.dylib \
-    -force_load ~/src/bui-src/build/kit/libbui_kit.a \
-    -force_load ~/src/bui-src/build/gpu/libbui_gpu.a \
-    -force_load ~/src/bui-src/build/core/libbui_core.a \
-    -framework Cocoa -framework IOKit -framework CoreVideo \
-    -framework AVFoundation -framework CoreMedia -lm -lpthread
+export BUI_HOME=~/src/bui-src
+git clone --depth 1 https://github.com/ppmpreetham/BUI.git "$BUI_HOME"
+cmake -S "$BUI_HOME" -B "$BUI_HOME/build" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$BUI_HOME/build" --parallel
+jolt native    # links $BUI_HOME/build's static archives into lib/libbui.dylib
 ```
 
-The dylib is declared in `deps.edn` under `:jolt/native` and loaded
-automatically when the namespaces are required. (The link line above is
-macOS; Linux wants the usual X11/dev packages instead of the frameworks.)
+`jolt native` (which `jolt test`, `jolt smoke` and `jolt counter` run first)
+links the kit, gpu and core archives into one shared library at `lib/` in this
+project, and skips the link when that file is newer than the archives. The
+`:jolt/native` entry in `deps.edn` loads `lib/libbui.dylib` (`lib/libbui.so` on
+Linux) relative to this project, so it is found from consumer apps as well, and
+falls back to a `libbui.dylib` / `libbui.so` on the loader's search path. The
+macOS link uses the Cocoa/IOKit/CoreVideo/AVFoundation/CoreMedia frameworks;
+on Linux it uses `--whole-archive` and expects the usual X11 dev packages.
 
 **License note:** BUI is GPL-2.0-or-later; programs linking it are GPL too.
 
