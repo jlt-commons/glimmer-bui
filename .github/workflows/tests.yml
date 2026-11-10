@@ -17,8 +17,8 @@ jobs:
     env:
       BUI_HOME: ${{ github.workspace }}/bui
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           repository: ppmpreetham/BUI
           ref: ${{ env.BUI_REF }}
@@ -28,7 +28,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y liblz4-1 zlib1g libtinfo6 libx11-dev
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: bui-cache
         with:
           path: bui/build
@@ -44,7 +44,7 @@ jobs:
           cmake --build bui/build --parallel 4
       - id: jolt
         uses: jlt-commons/setup-jolt@v1.0.2
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.jolt/gitlibs
