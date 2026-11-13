@@ -6,8 +6,8 @@
   ;; (BKNode), props onto BK_set_num/BK_set_str, :on-* events onto the BKHost
   ;; emit callback, and drives BK_window_run as the app loop.
   :deps {jolt-lang/glimmer {:git/url "https://github.com/jolt-lang/glimmer"
-                            :git/tag "v0.1.4"
-                            :git/sha "09b8ab08705fa1e6f20145c2e99eaaba9ea812cc"}}
+                            :git/tag "v0.1.8"
+                            :git/sha "7f00d14d1b3c6239638d03780006c4a76fca379f"}}
 
   ;; BUI kit (https://github.com/ppmpreetham/BUI), bound via jolt.ffi. The kit
   ;; builds as static archives; the `native` task links them into one shared
