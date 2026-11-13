@@ -18,7 +18,8 @@
 
   The kit calls one BKHost.emit per context; nodes carry their :on-* handlers
   in the BKNode ref slot (a jolt atom), which the dispatcher looks up by kind."
-  (:require [glimmer.backend :as b]
+  (:require [clojure.string :as str]
+            [glimmer.backend :as b]
             [glimmer-bui.ffi :as bk]
             [glimmer-bui.widget :as w]
             [jolt.ffi :as ffi]))
@@ -45,23 +46,107 @@
   and SCROLL (request kind, amount)."
   #{6 8 9 10 11 18 19})
 
-(defn emit-dispatch
-  "The BKHost.emit body: look up the node's handlers (registered at create! in
-  glimmer-bui.widget's handler table, keyed by node address) and invoke the
-  matching kind. CHANGE (1) passes the node's current numeric value, SUBMIT (16)
-  its text, WHEEL (15) the delta `a`, ACTIVATE/RENAME (5/4) the index `a`,
-  positional kinds (press/release/double/motion, configure, toggle, scroll)
-  `a` and `b`; every other kind passes nothing."
-  [node kind a b]
+(defn- ref-string [ref]
+  (cond (string? ref) ref
+        (and ref (not (ffi/null? ref))) (ffi/ptr->string ref)))
+
+(defn- keysym
+  "The keysym of a key event's ref (\"text\\tkeysym\")."
+  [ref]
+  (some-> (ref-string ref) (str/split #"\t" 2) second))
+
+(defn- event-mods
+  "The modifier bits (BK_SHIFT 1, BK_CTRL 2, BK_ALT 4) of a raw pointer
+  event's ref, the kit's \"mods button\" string (a C string, or a Clojure
+  string in tests); 0 without one."
+  [ref]
+  (or (some->> (ref-string ref) (re-find #"^-?\d+") parse-long) 0))
+
+;; --- key bindings ---------------------------------------------------------------
+;; App-wide shortcuts through BK_bind: the kit offers a combo after the focused
+;; text field and the widgets under the pointer have declined the key, and
+;; reports it as a CALL (3) with no node and the binding's ref. The ref is the
+;; combo as a C string, kept for the life of the process (the kit holds it).
+(def ^:private call-kind 3)
+
+(defonce ^:private key-handlers (atom {}))   ; combo -> fn of no args
+(defonce ^:private key-refs (atom {}))       ; combo -> its C string
+(defonce ^:private key-ctx (atom nil))       ; {:ctx ctx :bound #{combo}}
+
+(defn- key-ref [combo]
+  (or (get @key-refs combo)
+      (let [n (count combo) p (ffi/alloc (inc n))]
+        (ffi/write-bytes p combo)
+        (ffi/write p :uint8 0 n)
+        (get (swap! key-refs #(if (contains? % combo) % (assoc % combo p))) combo))))
+
+(defn- bind-in-ctx! [combo]
+  (when-let [{:keys [ctx bound]} @key-ctx]
+    (when-not (contains? bound combo)
+      (bk/bind ctx combo (key-ref combo))
+      (swap! key-ctx update :bound conj combo))))
+
+(defn bind-key!
+  "Call `f` (no arguments) when `combo` is pressed anywhere in the window,
+  unless a text field being edited or a widget under the pointer takes the
+  key first. Combos are the kit's: modifiers \"ctrl\" \"shift\" \"alt\"
+  joined to a keysym with +, e.g. \"ctrl+s\", \"shift+ctrl+z\",
+  \"ctrl+minus\", \"escape\". The kit reports macOS's Command as Ctrl, so
+  \"ctrl+s\" is Cmd+S there and Ctrl+S elsewhere. Rebinding a combo replaces
+  its handler. Works before or after the window is up."
+  [combo f]
+  (swap! key-handlers assoc combo f)
+  (bind-in-ctx! combo)
+  nil)
+
+(defn unbind-key!
+  "Drop `combo`'s handler. (The kit keeps the combo, so the key is still
+  swallowed rather than reaching other widgets.)"
+  [combo]
+  (swap! key-handlers dissoc combo)
+  nil)
+
+(defn attach-key-bindings!
+  "Bind every registered combo in context `ctx` (and later ones as they are
+  registered). The app loop does this for its window's context."
+  [ctx]
+  (reset! key-ctx {:ctx ctx :bound #{}})
+  (doseq [combo (keys @key-handlers)] (bind-in-ctx! combo))
+  nil)
+
+(defn detach-key-bindings! [] (reset! key-ctx nil) nil)
+
+(defn- key-call [ref]
+  (when-let [f (get @key-handlers (ref-string ref))]
+    (f)))
+
+(defn- dispatch-node [node kind ref a b]
   (when-let [handlers (w/handlers-for node)]
     (when-let [f (get handlers kind)]
       (cond
         (= kind 1)  (f (bk/get-num node "value"))
         (= kind 16) (f (bk/get-str node "value"))
-        (= kind 15) (f a)
+        (= kind 15) (f a (event-mods ref))
+        (or (= kind 14) (= kind 20)) (f (keysym ref) (long a))
         (or (= kind 4) (= kind 5)) (f a)
         (contains? positional-kinds kind) (f a b)
         :else (f)))))
+
+(defn emit-dispatch
+  "The BKHost.emit body. A CALL (3) with no node is a key binding: it runs
+  the combo's bind-key! handler. Anything else looks up the node's handlers
+  (registered at create! in glimmer-bui.widget's handler table, keyed by node
+  address) and invokes the matching kind. CHANGE (1) passes the node's
+  current numeric value, SUBMIT (16) its text, WHEEL (15) the delta `a` and
+  the modifier bits (the kit turns a horizontal scroll into Shift + wheel),
+  KEY/KEYRELEASE (14/20) the keysym and the modifier bits `a`,
+  ACTIVATE/RENAME (5/4) the index `a`, positional kinds
+  (press/release/double/motion, configure, toggle, scroll) `a` and `b`; every
+  other kind passes nothing."
+  [node kind ref a b]
+  (if (and (= kind call-kind) (ffi/null? node))
+    (key-call ref)
+    (dispatch-node node kind ref a b)))
 
 (def ^:private callables (atom #{}))
 
@@ -75,8 +160,8 @@
   (when-not @host-ptr
     (let [cb (retain-callable!
                (ffi/foreign-callable
-                 (fn [_data node kind _ref _a _b]
-                   (emit-dispatch node kind _a _b))
+                 (fn [_data node kind ref a b]
+                   (emit-dispatch node kind ref a b))
                  [:pointer :pointer :int :pointer :double :double]
                  :void :collect-safe))]
       (let [p (ffi/alloc (ffi/sizeof host-layout))]
@@ -129,6 +214,7 @@
         root (bk/node-new "column")
         ctx   (bk/context-new root)]
     (bk/context-set-host ctx (ensure-host!))
+    (attach-key-bindings! ctx)
     (if (= 1 (bk/window-supported))
       (do
         (bk/window-wake-init (retain-callable!
@@ -170,7 +256,8 @@
             (finally
               (reset! b/loop-running? false)
               (reset! last-frames (bk/window-frames win))
-              (reset! current-window nil)))
+              (reset! current-window nil)
+              (detach-key-bindings!)))
           (bk/window-free win)))
       ;; No window host (headless CI): mount the root anyway so a render can
       ;; be driven manually with BK_render into a raster.
@@ -223,4 +310,4 @@
 (defn test-emit
   "Invoke the emit dispatcher directly (headless tests: no window loop)."
   [ctx node kind ref a b]
-  (emit-dispatch node kind a b))
+  (emit-dispatch node kind ref a b))

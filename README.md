@@ -105,8 +105,8 @@ pointer) with `:iw`/`:ih`/`:fit`); only changed items are re-sent, and ids that
 disappear are deleted. `glimmer-bui.ffi/file-dialog` runs Blender's file browser.
 
 **Events:** `:on-click`, `:on-change` (receives the node's numeric value),
-`:on-submit` (text fields, receives the text), `:on-wheel` (the delta),
-`:on-activate`/`:on-rename` (the row index), and the raw pointer events
+`:on-submit` (text fields, receives the text), `:on-wheel` (the delta and the modifier bits: Shift 1, Ctrl 2, Alt 4; a horizontal scroll arrives as Shift + wheel),
+`:on-key`/`:on-keyrelease` (the keysym, e.g. "space", and the modifier bits; nodes with `:events 1`, under the pointer when nothing has focus), `:on-activate`/`:on-rename` (the row index), and the raw pointer events
 `:on-press`/`:on-release`/`:on-double`/`:on-motion`, which receive `x y`
 relative to the node (set `:events 1` on the node to get them);
 `:on-configure` receives the node's new `width height`. The kit funnels
@@ -115,6 +115,26 @@ table keyed by node address and dispatched by kind.
 
 Handlers close over reactive cells (not values), so the first render's closure
 stays correct for the widget's life — exactly like glimmer-gtk.
+
+## Keyboard shortcuts
+
+`glimmer-bui.core/bind-key!` binds an app-wide shortcut through the kit's
+`BK_bind`: the handler runs wherever the pointer is, after a text field being
+edited and the widgets under the pointer have had the chance to take the key.
+
+```clojure
+(require '[glimmer-bui.core :as gb])
+
+(gb/bind-key! "ctrl+s" save!)          ; Cmd+S on macOS, Ctrl+S elsewhere
+(gb/bind-key! "shift+ctrl+z" redo!)
+(gb/bind-key! "ctrl+minus" zoom-out!)
+(gb/bind-key! "escape" close-panel!)
+```
+
+A combo is modifiers (`ctrl`, `shift`, `alt`) joined to a keysym with `+`; the
+kit matches keysyms case-insensitively and reports macOS's Command as Ctrl.
+Bindings can be made before or after `ui/run`; rebinding a combo replaces its
+handler and `unbind-key!` drops it.
 
 ## Architecture
 

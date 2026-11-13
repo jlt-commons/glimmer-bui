@@ -93,6 +93,7 @@
 (ffi/defcfn scroll          "BK_scroll"          [:pointer :int :int :float :float :int] :int)
 (ffi/defcfn key             "BK_key"             [:pointer :string :string :int] :int)
 (ffi/defcfn context-menu    "BK_context_menu"    [:pointer :int :int :int] :int)
+(ffi/defcfn bind            "BK_bind"            [:pointer :string :pointer] :void)
 (ffi/defcfn timer           "BK_timer"           [:pointer :int] :void)
 (ffi/defcfn close-popups    "BK_close_popups"    [:pointer] :void)
 (ffi/defcfn set-pointer     "BK_set_pointer"     [:pointer :int :int] :void)
