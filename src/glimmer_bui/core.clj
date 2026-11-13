@@ -18,7 +18,8 @@
 
   The kit calls one BKHost.emit per context; nodes carry their :on-* handlers
   in the BKNode ref slot (a jolt atom), which the dispatcher looks up by kind."
-  (:require [glimmer.backend :as b]
+  (:require [clojure.string :as str]
+            [glimmer.backend :as b]
             [glimmer-bui.ffi :as bk]
             [glimmer-bui.widget :as w]
             [jolt.ffi :as ffi]))
@@ -45,20 +46,39 @@
   and SCROLL (request kind, amount)."
   #{6 8 9 10 11 18 19})
 
+(defn- ref-string [ref]
+  (cond (string? ref) ref
+        (and ref (not (ffi/null? ref))) (ffi/ptr->string ref)))
+
+(defn- keysym
+  "The keysym of a key event's ref (\"text\\tkeysym\")."
+  [ref]
+  (some-> (ref-string ref) (str/split #"\t" 2) second))
+
+(defn- event-mods
+  "The modifier bits (BK_SHIFT 1, BK_CTRL 2, BK_ALT 4) of a raw pointer
+  event's ref, the kit's \"mods button\" string (a C string, or a Clojure
+  string in tests); 0 without one."
+  [ref]
+  (or (some->> (ref-string ref) (re-find #"^-?\d+") parse-long) 0))
+
 (defn emit-dispatch
   "The BKHost.emit body: look up the node's handlers (registered at create! in
   glimmer-bui.widget's handler table, keyed by node address) and invoke the
   matching kind. CHANGE (1) passes the node's current numeric value, SUBMIT (16)
-  its text, WHEEL (15) the delta `a`, ACTIVATE/RENAME (5/4) the index `a`,
+  its text, WHEEL (15) the delta `a` and the modifier bits (the kit turns a
+  horizontal scroll into Shift + wheel), KEY/KEYRELEASE (14/20) the keysym
+  and the modifier bits `a`, ACTIVATE/RENAME (5/4) the index `a`,
   positional kinds (press/release/double/motion, configure, toggle, scroll)
   `a` and `b`; every other kind passes nothing."
-  [node kind a b]
+  [node kind ref a b]
   (when-let [handlers (w/handlers-for node)]
     (when-let [f (get handlers kind)]
       (cond
         (= kind 1)  (f (bk/get-num node "value"))
         (= kind 16) (f (bk/get-str node "value"))
-        (= kind 15) (f a)
+        (= kind 15) (f a (event-mods ref))
+        (or (= kind 14) (= kind 20)) (f (keysym ref) (long a))
         (or (= kind 4) (= kind 5)) (f a)
         (contains? positional-kinds kind) (f a b)
         :else (f)))))
@@ -75,8 +95,8 @@
   (when-not @host-ptr
     (let [cb (retain-callable!
                (ffi/foreign-callable
-                 (fn [_data node kind _ref _a _b]
-                   (emit-dispatch node kind _a _b))
+                 (fn [_data node kind ref a b]
+                   (emit-dispatch node kind ref a b))
                  [:pointer :pointer :int :pointer :double :double]
                  :void :collect-safe))]
       (let [p (ffi/alloc (ffi/sizeof host-layout))]
@@ -223,4 +243,4 @@
 (defn test-emit
   "Invoke the emit dispatcher directly (headless tests: no window loop)."
   [ctx node kind ref a b]
-  (emit-dispatch node kind a b))
+  (emit-dispatch node kind ref a b))
