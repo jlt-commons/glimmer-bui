@@ -116,6 +116,26 @@ table keyed by node address and dispatched by kind.
 Handlers close over reactive cells (not values), so the first render's closure
 stays correct for the widget's life — exactly like glimmer-gtk.
 
+## Keyboard shortcuts
+
+`glimmer-bui.core/bind-key!` binds an app-wide shortcut through the kit's
+`BK_bind`: the handler runs wherever the pointer is, after a text field being
+edited and the widgets under the pointer have had the chance to take the key.
+
+```clojure
+(require '[glimmer-bui.core :as gb])
+
+(gb/bind-key! "ctrl+s" save!)          ; Cmd+S on macOS, Ctrl+S elsewhere
+(gb/bind-key! "shift+ctrl+z" redo!)
+(gb/bind-key! "ctrl+minus" zoom-out!)
+(gb/bind-key! "escape" close-panel!)
+```
+
+A combo is modifiers (`ctrl`, `shift`, `alt`) joined to a keysym with `+`; the
+kit matches keysyms case-insensitively and reports macOS's Command as Ctrl.
+Bindings can be made before or after `ui/run`; rebinding a combo replaces its
+handler and `unbind-key!` drops it.
+
 ## Architecture
 
 Three namespaces, mirroring glimmer-gtk:

@@ -91,3 +91,34 @@
       (binding [*err* (java.io.StringWriter.)]
         (#'c/drain-work!))
       (is (= [1 3] @ran)))))
+
+(deftest key-bindings
+  (testing "a bound combo calls its handler wherever the pointer is"
+    (let [hits (atom [])
+          root (bk/node-new "column")
+          ctx (bk/context-new root)]
+      (bk/context-set-host ctx (#'c/ensure-host!))
+      (c/bind-key! "ctrl+e" #(swap! hits conj :export))
+      (c/bind-key! "shift+ctrl+z" #(swap! hits conj :redo))
+      (c/attach-key-bindings! ctx)
+      (bk/key ctx "" "e" 2)             ; Ctrl (Command on macOS) + E
+      (bk/key ctx "" "Z" 3)             ; Shift + Ctrl + Z
+      (bk/key ctx "e" "e" 0)            ; plain E: not bound
+      (is (= [:export :redo] @hits))
+      (testing "rebinding a combo replaces its handler, without binding it twice"
+        (c/bind-key! "ctrl+e" #(swap! hits conj :export2))
+        (bk/key ctx "" "e" 2)
+        (is (= [:export :redo :export2] @hits)))
+      (testing "a combo bound after the context is attached works too"
+        (c/bind-key! "ctrl+o" #(swap! hits conj :open))
+        (bk/key ctx "" "o" 2)
+        (is (= :open (peek @hits))))
+      (testing "an unbound combo does nothing"
+        (c/unbind-key! "ctrl+o")
+        (bk/key ctx "" "o" 2)
+        (is (= 4 (count @hits))))
+      (c/unbind-key! "ctrl+e")
+      (c/unbind-key! "shift+ctrl+z")
+      (c/detach-key-bindings!)
+      (bk/context-free ctx)
+      (bk/node-free root))))
